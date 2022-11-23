@@ -30,6 +30,9 @@ from ..board.mbed_board import MbedBoard
 from ..board.board_ids import BOARD_ID_TO_INFO
 from ..utility import conversion
 
+import logging
+LOG = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from ..board.board_ids import BoardInfo
 
@@ -301,14 +304,17 @@ class STLinkMemoryInterface(MemoryInterface):
         return conversion.byte_list_to_u32le_list(self._link.read_mem32(addr, size * 4, self._apsel, csw))
 
     def read_memory_block8(self, addr: int, size: int, **attrs: Any) -> Sequence[int]:
+        num_requested_bytes = size
         addr &= 0xffffffff
         csw = attrs.get('csw', 0)
         res = []
+        req = {}
 
         # read leading unaligned bytes
-        unaligned_count = addr & 3
-        if (size > 0) and (unaligned_count > 0):
+        unaligned_count = 3 & (4 - (addr & 3))
+        if (size > unaligned_count > 0):
             res += self._link.read_mem8(addr, unaligned_count, self._apsel, csw)
+            req[f'U1 @ {addr:08x}'] = unaligned_count
             size -= unaligned_count
             addr += unaligned_count
 
@@ -316,13 +322,16 @@ class STLinkMemoryInterface(MemoryInterface):
         if (size >= 4):
             aligned_size = size & ~3
             res += self._link.read_mem32(addr, aligned_size, self._apsel, csw)
+            req[f' A @ {addr:08x}'] = aligned_size
             size -= aligned_size
             addr += aligned_size
 
         # read trailing unaligned bytes
         if (size > 0):
             res += self._link.read_mem8(addr, size, self._apsel, csw)
+            req[f'U2 @ {addr:08x}'] = size
 
+        LOG.warning(f"requested {num_requested_bytes}, got {len(res)}, {req}")
         return res
 
     def write_memory_block8(self, addr: int, data: Sequence[int], **attrs: Any) -> None:
@@ -332,8 +341,8 @@ class STLinkMemoryInterface(MemoryInterface):
         idx = 0
 
         # write leading unaligned bytes
-        unaligned_count = addr & 3
-        if (size > 0) and (unaligned_count > 0):
+        unaligned_count = 3 & (4 - (addr & 3))
+        if (size > unaligned_count > 0):
             self._link.write_mem8(addr, data[:unaligned_count], self._apsel, csw)
             size -= unaligned_count
             addr += unaligned_count

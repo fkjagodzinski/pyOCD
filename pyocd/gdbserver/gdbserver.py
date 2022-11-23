@@ -16,6 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pdb
 import logging
 import threading
 from time import sleep
@@ -423,6 +424,7 @@ class GDBServer(threading.Thread):
         except Exception as e:
             LOG.error("Unhandled exception in handle_message (%s): %s",
                     msg[1:2], e, exc_info=self.session.log_tracebacks)
+            pdb.post_mortem()
             return self.create_rsp_packet(b"E01")
 
     def extended_remote(self):
